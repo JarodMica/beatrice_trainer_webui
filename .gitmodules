@@ -1,0 +1,3 @@
+[submodule "modules/beatrice_trainer"]
+	path = modules/beatrice_trainer
+	url = https://github.com/JarodMica/beatrice_trainer.git
