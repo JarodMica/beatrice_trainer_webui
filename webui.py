@@ -6,6 +6,7 @@ import gradio as gr
 import webbrowser
 import socket
 import tqdm
+from pathlib import Path
 
 from multiprocessing import Pool, cpu_count
 import pysrt
@@ -156,6 +157,14 @@ def process_proxy(folder_to_process_path, progress = gr.Progress(track_tqdm=True
         
     return "Transcription and processing completed successfully!"
 
+def training_proxy(data_dir="datasets/model_1", output_dir="training/output_test", resume=False, config=None, progress=gr.Progress(track_tqdm=True)):
+    from beatrice_trainer.src.train import run_training
+    data_dir, output_dir = Path(data_dir), Path(output_dir)
+    
+    # data_dir, out_dir, resume=False, config=None
+    run_training(data_dir, output_dir, resume, config)
+    
+
 if __name__ == "__main__":
     # Keep the hefty imports away from multiprocessing 
     import whisperx
@@ -174,7 +183,7 @@ if __name__ == "__main__":
     ]
     
     with gr.Blocks() as demo:
-        with gr.Tabs("Create Dataset"):
+        with gr.Tab("Create Dataset"):
             with gr.Row():
                 with gr.Column():
                     list_of_datasets = get_available_datasets()
@@ -191,7 +200,19 @@ if __name__ == "__main__":
                                          inputs=folder_to_process,
                                          outputs=folder_to_process
                                          )
-                
+        with gr.Tab("Train"):
+            with gr.Row():
+                with gr.Column():
+                    placeholder = gr.Textbox(value="Config stuff on the left side")
+                    start_train_button = gr.Button(value="Start Training")
+                    
+                with gr.Column():
+                    output_console = gr.Textbox(label="Training Console")
+                    
+        start_train_button.click(fn=training_proxy,
+                                 outputs=output_console
+                                 )
+                    
             
     port = get_port_available()
     webbrowser.open(f"http://localhost:{port}")

@@ -1,0 +1,9 @@
+pysrt
+pydub
+gradio
+tqdm
+tensorboard
+soundfile
+pyworld==0.3.2
+
+git+https://github.com/m-bain/whisperx.git
