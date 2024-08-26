@@ -2,3 +2,4 @@ assets/
 venv/
 .vscode/
 __pycache__/
+*.wav

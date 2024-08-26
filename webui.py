@@ -51,7 +51,6 @@ def load_whisperx(model_name):
     whisper_model = whisperx.load_model(model_name, "cuda", compute_type="float16")
 
 def run_whisperx_transcribe(audio_file_path, chunk_size=15, language=None):
-    global whisper_model
     audio = whisperx.load_audio(audio_file_path)
     result = whisper_model.transcribe(audio=audio, batch_size=16, chunk_size=chunk_size)
 
@@ -109,7 +108,7 @@ def process_speaker_folder(file_info, progress_bar=None):
 def split_by_srt(folder_path, progress_bar=None):
     file_pairs = []
     for file in os.listdir(folder_path):
-        if file.endswith(('.wav', '.mp3', '.m4a')): 
+        if file.endswith(('.wav', '.mp3', '.m4a', ".mp4")): 
             audio_file = os.path.join(folder_path, file)
             srt_file = os.path.join(folder_path, file.rsplit('.', 1)[0] + '.srt')
             if os.path.exists(srt_file):
@@ -117,9 +116,6 @@ def split_by_srt(folder_path, progress_bar=None):
 
     with Pool(cpu_count()) as pool:
         list(tqdm.tqdm(pool.imap_unordered(process_speaker_folder, file_pairs), total=len(file_pairs), desc="Processing Files", file=sys.stdout))
-
-from whisperx.audio import N_SAMPLES
-
 
 def process_proxy(folder_to_process_path, progress = gr.Progress(track_tqdm=True)):
     training_root = "training"
@@ -132,8 +128,6 @@ def process_proxy(folder_to_process_path, progress = gr.Progress(track_tqdm=True
 
     load_whisperx('large-v3')
     
-    global N_SAMPLES
-    N_SAMPLES = 100000000
     
     if not is_correct_dataset_structure(folder_to_process_path):
         raise gr.Error("Invalid folder structure. Ensure the folder contains ONLY subfolders.")
@@ -234,7 +228,107 @@ if __name__ == "__main__":
         ".mp4"
     ]
     
-    with gr.Blocks() as demo:
+    def load_settings():
+        settings_file = 'configs/settings.json'
+        
+        if not os.path.exists(settings_file):
+            settings = {"custom_theme": True, "dark_mode": True}
+            save_settings(settings) 
+        else:
+            with open(settings_file, 'r') as f:
+                settings = json.load(f)
+        
+        return settings
+
+    def save_settings(settings):
+        os.makedirs(os.path.dirname('configs/settings.json'), exist_ok=True)
+        with open('configs/settings.json', 'w') as f:
+            json.dump(settings, f, indent=4)
+
+    settings = load_settings()
+    if settings.get("custom_theme", True):
+        theme = gr.themes.Glass(
+            primary_hue="zinc",
+            secondary_hue="slate",
+            neutral_hue="orange",
+        ).set(
+            body_background_fill_dark='*primary_900',
+            body_text_color='*primary_950',
+            body_text_color_subdued='*neutral_500',
+            embed_radius='*radius_md',
+            border_color_accent_subdued_dark='*neutral_950',
+            border_color_primary_dark='*secondary_800',
+            color_accent_soft='*primary_400',
+            block_border_width_dark='0',
+            block_label_border_width_dark='None',
+            block_shadow_dark='*primary_600 0px 0px 5px 0px',
+            button_border_width='2px',
+            button_border_width_dark='0px',
+            button_shadow_hover='*block_shadow',
+            button_large_radius='*radius_md',
+            button_small_radius='*radius_md',
+            button_small_text_weight='500',
+            button_primary_border_color='*primary_500',
+            button_primary_border_color_dark='*primary_950'
+        )
+    else:
+        theme = gr.themes.Default()
+
+    def toggle_theme():
+        settings = load_settings()
+        settings["custom_theme"] = not settings.get("custom_theme", False)
+        save_settings(settings)
+        if settings['custom_theme']:
+            gr.Info("Gradio will boot up with custom theme on next start up.")
+        else:
+            gr.Info("Gradio will boot up with the default theme on next start up.")
+            
+    def toggle_dark_mode():
+        settings = load_settings()
+        settings["dark_mode"] = not settings.get("dark_mode", True)
+        save_settings(settings)
+        if settings['dark_mode']:
+            gr.Info("Gradio will boot up with dark mode on next start up.")
+        else:
+            gr.Info("Gradio will boot up with light mode on next start up.")
+
+    # Construct the JavaScript based on dark mode setting
+    js_dark_mode = "document.querySelector('body').classList.add('dark');" if settings.get("dark_mode", True) else "document.querySelector('body').classList.remove('dark');"
+
+    js = f"""
+        function createGradioAnimation() {{
+            var container = document.createElement('div');
+            container.id = 'gradio-animation';
+            container.style.fontSize = '2em';
+            container.style.fontWeight = 'bold';
+            container.style.textAlign = 'center';
+            container.style.marginBottom = '20px';
+            container.style.position = 'absolute';
+            container.style.left = '-100%'; // Start off-screen to the left
+            container.style.top = '20px'; // Adjust this value as needed to position the header vertically
+            container.style.transition = 'left 1s ease-out'; // Animate the position
+            container.style.zIndex = '1000'; // Ensure it stays on top of other elements
+
+            var text = 'Beatrice Dataset Creator';
+            container.innerText = text;
+
+            var gradioContainer = document.querySelector('.gradio-container');
+            gradioContainer.style.position = 'relative'; // Ensure the parent is positioned relatively
+            gradioContainer.style.paddingTop = '60px'; // Reserve space at the top to avoid overlap (adjust this value if needed)
+            gradioContainer.insertBefore(container, gradioContainer.firstChild);
+
+            // Trigger the animation to slide the text to the center
+            setTimeout(function() {{
+                container.style.left = '50%';
+                container.style.transform = 'translateX(-50%)'; // Center the container
+            }}, 100);
+
+            {js_dark_mode} // Apply dark mode based on setting
+            return 'Animation created';
+        }}
+    """
+        
+    with gr.Blocks(js=js, theme=theme) as demo:
         with gr.Tab("Create Dataset"):
             with gr.Row():
                 with gr.Column():
@@ -242,7 +336,7 @@ if __name__ == "__main__":
                     list_of_datasets = get_available_items(root="datasets", directory_only=True)
                     folder_to_process = gr.Dropdown(choices=list_of_datasets, value=None, label="Dataset to Process")
                     refresh_datasets_button = gr.Button(value="Refresh Datasets Available")
-                    process_button = gr.Button(value="Begin Process")
+                    process_button = gr.Button(value="Begin Process", variant="primary")
                 with gr.Column():
                     console_output = gr.Textbox(label="Progress Console")
 
@@ -255,8 +349,6 @@ if __name__ == "__main__":
                                          outputs=folder_to_process
                                          )
                 
-
-            
         with gr.Tab("Train"):
             with gr.Row():
                 with gr.Column():
@@ -274,11 +366,14 @@ if __name__ == "__main__":
                     # TRAINING_SETTINGS["warmup_steps"] =
                     
                     
-                    start_train_button = gr.Button(value="Start Training")
+                    start_train_button = gr.Button(value="Start Training", variant="primary")
                     
                 with gr.Column():
                     output_console = gr.Textbox(label="Training Console")
-                    
+        with gr.Tab("Settings"):
+            dark_mode_btn = gr.Button("Dark Mode", variant="primary")
+            toggle_theme_btn = gr.Button("Toggle Custom Theme", variant="primary")
+
         start_train_button.click(fn=training_proxy,
                                  inputs=[
                                      TRAINING_SETTINGS["dataset_name"],
@@ -313,6 +408,23 @@ if __name__ == "__main__":
                                                 outputs=[
                                                     folder_to_process
                                                 ]
+        )
+        
+        toggle_theme_btn.click(toggle_theme)
+        dark_mode_btn.click(toggle_dark_mode)
+
+        dark_mode_btn.click(
+            None,
+            None,
+            None,
+            js="""() => {
+            if (document.querySelectorAll('.dark').length) {
+                document.querySelectorAll('.dark').forEach(el => el.classList.remove('dark'));
+            } else {
+                document.querySelector('body').classList.add('dark');
+            }
+        }""",
+            show_api=False,
         )
             
     port = get_port_available()
