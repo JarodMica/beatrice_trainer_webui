@@ -6,11 +6,14 @@ import gradio as gr
 import webbrowser
 import socket
 import tqdm
+import json
 from pathlib import Path
 
 from multiprocessing import Pool, cpu_count
 import pysrt
 from pydub import AudioSegment
+
+from gradio_utils.utils import get_available_items, refresh_dropdown_proxy
 
 def get_port_available(start_port=7860, end_port=7865):
     def is_port_in_use(port):
@@ -27,6 +30,8 @@ def get_port_available(start_port=7860, end_port=7865):
     return webui_port
 
 def is_correct_dataset_structure(folder_to_analyze):
+    if len(os.listdir(folder_to_analyze)) <= 0:
+        return False
     for item in os.listdir(folder_to_analyze):
         path_to_item = os.path.join(folder_to_analyze, item)
         if os.path.isdir(path_to_item):
@@ -35,14 +40,10 @@ def is_correct_dataset_structure(folder_to_analyze):
             return False
     return True
 
-def get_available_datasets(root="datasets"):
-    list_of_datasets = [os.path.join(root, folder) for folder in os.listdir(root) if os.path.isdir(os.path.join(root,folder))]
-    return list_of_datasets
-
 def folder_to_process_proxy(folder_to_analyze):
     folder_check = is_correct_dataset_structure(folder_to_analyze)
     if folder_check==False:
-        raise gr.Error("Please check the folder structure and make sure it contains ONLY folders")
+        raise gr.Error("Please check the folder structure and make sure it contains ONLY folders and that it's NOT empty")
     return gr.Dropdown(value=folder_to_analyze)
 
 def load_whisperx(model_name):
@@ -52,7 +53,7 @@ def load_whisperx(model_name):
 def run_whisperx_transcribe(audio_file_path, chunk_size=15, language=None):
     global whisper_model
     audio = whisperx.load_audio(audio_file_path)
-    result = whisper_model.transcribe(audio=audio, chunk_size=chunk_size)
+    result = whisper_model.transcribe(audio=audio, batch_size=16, chunk_size=chunk_size)
 
     model_a, metadata = whisperx.load_align_model(language_code=result["language"], device="cuda")
     result = whisperx.align(result["segments"], model_a, metadata, audio, device="cuda", return_char_alignments=False)
@@ -117,6 +118,8 @@ def split_by_srt(folder_path, progress_bar=None):
     with Pool(cpu_count()) as pool:
         list(tqdm.tqdm(pool.imap_unordered(process_speaker_folder, file_pairs), total=len(file_pairs), desc="Processing Files", file=sys.stdout))
 
+from whisperx.audio import N_SAMPLES
+
 
 def process_proxy(folder_to_process_path, progress = gr.Progress(track_tqdm=True)):
     training_root = "training"
@@ -128,6 +131,9 @@ def process_proxy(folder_to_process_path, progress = gr.Progress(track_tqdm=True
         raise gr.Error("Remove existing training folder")
 
     load_whisperx('large-v3')
+    
+    global N_SAMPLES
+    N_SAMPLES = 100000000
     
     if not is_correct_dataset_structure(folder_to_process_path):
         raise gr.Error("Invalid folder structure. Ensure the folder contains ONLY subfolders.")
@@ -157,12 +163,58 @@ def process_proxy(folder_to_process_path, progress = gr.Progress(track_tqdm=True
         
     return "Transcription and processing completed successfully!"
 
-def training_proxy(data_dir="datasets/model_1", output_dir="training/output_test", resume=False, config=None, progress=gr.Progress(track_tqdm=True)):
+def training_proxy(data_dir, batch_size, epochs, num_workers, resume, save_interval, log_interval, progress=gr.Progress(track_tqdm=True)):
+    # pathlib used here cuz of beatrice trainer
     from beatrice_trainer.src.train import run_training
+    output_name = os.path.basename(data_dir)
+    output_dir = os.path.join("trained_models", output_name)
+    models_output_dir = Path(os.path.join("trained_models", output_name, "models"))
     data_dir, output_dir = Path(data_dir), Path(output_dir)
     
+    def count_items_in_directory(root):
+        file_count = 0
+        
+        # Use rglob to iterate through all files recursively
+        for item in root.rglob('*'):  # The '*' pattern matches everything
+            if item.is_file():
+                file_count += 1
+        
+        return file_count
+    
+    total_audio_files = count_items_in_directory(data_dir)
+    
+    # calculate batches per epoch
+    batches_per_epoch = total_audio_files // batch_size
+    
+    # calculate total steps needed
+    n_steps = epochs * batches_per_epoch
+    
+    # warmup steps
+    # just going with half based on the initial config set by the okada
+    warmup_steps = n_steps // 2
+    
+    def update_configurations(config, batch_size, n_steps, num_workers, warmup_steps):
+        config['batch_size'] = batch_size
+        config['n_steps'] = n_steps
+        config['num_workers'] = num_workers
+        config['warmup_steps'] = warmup_steps
+        return config
+    
+    config_path = Path('assets/default_config.json')
+    with config_path.open('r') as file:
+        config = json.load(file)
+        
+    config = update_configurations(config, batch_size, n_steps, num_workers, warmup_steps)
+    updated_config_path = output_dir / 'updated_config.json'
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with updated_config_path.open('w') as file:
+        json.dump(config, file, indent=4)
+
+    
     # data_dir, out_dir, resume=False, config=None
-    run_training(data_dir, output_dir, resume, config)
+    run_training(data_dir, models_output_dir, batches_per_epoch, save_interval, log_interval , resume, updated_config_path)
+    
     
 
 if __name__ == "__main__":
@@ -186,8 +238,10 @@ if __name__ == "__main__":
         with gr.Tab("Create Dataset"):
             with gr.Row():
                 with gr.Column():
-                    list_of_datasets = get_available_datasets()
+                    hidden_dataset_textbox = gr.Textbox(value="datasets", visible=False)
+                    list_of_datasets = get_available_items(root="datasets", directory_only=True)
                     folder_to_process = gr.Dropdown(choices=list_of_datasets, value=None, label="Dataset to Process")
+                    refresh_datasets_button = gr.Button(value="Refresh Datasets Available")
                     process_button = gr.Button(value="Begin Process")
                 with gr.Column():
                     console_output = gr.Textbox(label="Progress Console")
@@ -200,19 +254,66 @@ if __name__ == "__main__":
                                          inputs=folder_to_process,
                                          outputs=folder_to_process
                                          )
+                
+
+            
         with gr.Tab("Train"):
             with gr.Row():
                 with gr.Column():
-                    placeholder = gr.Textbox(value="Config stuff on the left side")
+                    hidden_train_textbox = gr.Textbox(value="training", visible=False)
+                    TRAINING_SETTINGS = {}
+                    list_of_training_datasets = get_available_items(root="training", directory_only=True)
+                    TRAINING_SETTINGS["dataset_name"] = gr.Dropdown(label="Dataset to Train", choices=list_of_training_datasets, value=list_of_training_datasets[0] if list_of_training_datasets else '')
+                    refresh_training_available_button = gr.Button(value="Refresh Training Datasets Available")
+                    TRAINING_SETTINGS["batch_size"] = gr.Slider(label="Batch Size", minimum=1, maximum=64, value=4, step=1)
+                    TRAINING_SETTINGS["epochs"] = gr.Slider(label="Number of Epochs", minimum=1, maximum=1000, value=20, step=1)
+                    TRAINING_SETTINGS["num_workers"] = gr.Slider(label="Number of Workers",minimum=1, maximum=32, value=4, step=1)
+                    TRAINING_SETTINGS["save_interval"] = gr.Slider(label="Save Interval in Epochs", minimum=1, maximum= 200, value= 5, step=1)
+                    TRAINING_SETTINGS["log_interval"] = gr.Slider(label="Console Log Interval", minimum=10, maximum=1000, step=10)
+                    TRAINING_SETTINGS["resume"] = gr.Checkbox(label="Resume Training", value=False)
+                    # TRAINING_SETTINGS["warmup_steps"] =
+                    
+                    
                     start_train_button = gr.Button(value="Start Training")
                     
                 with gr.Column():
                     output_console = gr.Textbox(label="Training Console")
                     
         start_train_button.click(fn=training_proxy,
+                                 inputs=[
+                                     TRAINING_SETTINGS["dataset_name"],
+                                     TRAINING_SETTINGS["batch_size"],
+                                     TRAINING_SETTINGS["epochs"],
+                                     TRAINING_SETTINGS["num_workers"],
+                                     TRAINING_SETTINGS["resume"],
+                                     TRAINING_SETTINGS["save_interval"],
+                                     TRAINING_SETTINGS["log_interval"]
+                                         ],
                                  outputs=output_console
                                  )
-                    
+        
+        hidden_option1 = gr.Textbox(value="directory", visible=False)
+        hidden_option2 = gr.Textbox(value="files", visible=False)
+        
+        hidden_extensions1 = gr.Textbox(value="[]", visible=False)
+        
+        refresh_training_available_button.click(fn=refresh_dropdown_proxy,
+                                                inputs=[
+                                                    hidden_train_textbox, hidden_extensions1, hidden_option1
+                                                    ],
+                                                outputs=[
+                                                    TRAINING_SETTINGS["dataset_name"]
+                                                ]
+        )
+        
+        refresh_datasets_button.click(fn=refresh_dropdown_proxy,
+                                                inputs=[
+                                                    hidden_dataset_textbox, hidden_extensions1, hidden_option1
+                                                    ],
+                                                outputs=[
+                                                    folder_to_process
+                                                ]
+        )
             
     port = get_port_available()
     webbrowser.open(f"http://localhost:{port}")
