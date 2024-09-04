@@ -8,12 +8,13 @@ import socket
 import tqdm
 import json
 from pathlib import Path
+from datetime import datetime
 
 from multiprocessing import Pool, cpu_count
 import pysrt
 from pydub import AudioSegment
 
-from gradio_utils.utils import get_available_items, refresh_dropdown_proxy
+from gradio_utils.utils import get_available_items, refresh_dropdown_proxy, move_existing_folder
 
 def get_port_available(start_port=7860, end_port=7865):
     def is_port_in_use(port):
@@ -46,7 +47,7 @@ def folder_to_process_proxy(folder_to_analyze):
         raise gr.Error("Please check the folder structure and make sure it contains ONLY folders and that it's NOT empty")
     return gr.Dropdown(value=folder_to_analyze)
 
-def load_whisperx(language=None, model_name=None, progress=None):
+def load_whisperx(model_name=None, progress=None):
     import whisperx
     # import whisper
     if torch.cuda.is_available():
@@ -348,6 +349,7 @@ if __name__ == "__main__":
                     list_of_datasets = get_available_items(root="datasets", directory_only=True)
                     folder_to_process = gr.Dropdown(choices=list_of_datasets, value=None, label="Dataset to Process")
                     refresh_datasets_button = gr.Button(value="Refresh Datasets Available")
+                    move_existing_folder_button = gr.Button(value="Move Existing Folder")
                     process_button = gr.Button(value="Begin Process", variant="primary")
                 with gr.Column():
                     console_output = gr.Textbox(label="Progress Console")
@@ -360,6 +362,14 @@ if __name__ == "__main__":
                                          inputs=folder_to_process,
                                          outputs=folder_to_process
                                          )
+                
+                destination_root = gr.Textbox(value="training/moved_training_datasets", visible=False)
+                source_root = gr.Textbox(value="training", visible=False)
+                move_existing_folder_button.click(fn=move_existing_folder,
+                                                  inputs=[source_root, 
+                                                          folder_to_process, 
+                                                          destination_root]
+                )
                 
         with gr.Tab("Train"):
             with gr.Row():
