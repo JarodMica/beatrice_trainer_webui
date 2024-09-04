@@ -46,9 +46,20 @@ def folder_to_process_proxy(folder_to_analyze):
         raise gr.Error("Please check the folder structure and make sure it contains ONLY folders and that it's NOT empty")
     return gr.Dropdown(value=folder_to_analyze)
 
-def load_whisperx(model_name):
-    global whisper_model
-    whisper_model = whisperx.load_model(model_name, "cuda", compute_type="float16")
+def load_whisperx(language=None, model_name=None, progress=None):
+    import whisperx
+    # import whisper
+    if torch.cuda.is_available():
+        device = "cuda" 
+    else:
+        raise gr.Error("Non-Nvidia GPU detected, or CUDA not available")
+    try:
+        whisper_model = whisperx.load_model(model_name, device, download_root="whisper_models", compute_type="float16")
+    except Exception as e: # for older GPUs
+        print(f"Non float16 compatible GPU: {e}")
+        whisper_model = whisperx.load_model(model_name, device, download_root="whisper_models", compute_type="int8")
+    print("Loaded Whisper model")
+    return whisper_model
 
 def run_whisperx_transcribe(audio_file_path, chunk_size=15, language=None):
     audio = whisperx.load_audio(audio_file_path)
@@ -215,6 +226,7 @@ if __name__ == "__main__":
     # Keep the hefty imports away from multiprocessing 
     import whisperx
     from whisperx.utils import get_writer
+    import torch
 
     whisper_model = None
     VALID_AUDIO_EXT = [
@@ -309,7 +321,7 @@ if __name__ == "__main__":
             container.style.transition = 'left 1s ease-out'; // Animate the position
             container.style.zIndex = '1000'; // Ensure it stays on top of other elements
 
-            var text = 'Beatrice Dataset Creator';
+            var text = 'Beatrice Voice Changer Training Webui';
             container.innerText = text;
 
             var gradioContainer = document.querySelector('.gradio-container');
