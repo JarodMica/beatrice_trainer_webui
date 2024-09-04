@@ -44,7 +44,7 @@ Is available for Youtube Channel Members at the Supporter (Package) level: https
     pip install -r .\requirements.txt
     ```
 6. Uninstall and reinstall torch manually.  Other packages will install torch without cuda, to enable cuda, you need the prebuilt wheels.
-    > torch 2.4.0 causes issues with ctranslate (causes issue with whisperx) so make sure you do this step
+    > torch 2.4.0 causes issues with CTranslate2 (causes issue with whisperx) so make sure you do this step
 
     ```
     pip uninstall torch
