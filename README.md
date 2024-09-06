@@ -13,7 +13,7 @@ The latest version of w-okada is 2.0.61-alpha as of writing this readme
 As with a majority of my packages/repos, official support will be for Windows only.  Linux shouldn't have much of an issue, just some pathing changes may be necessary.  Pull request are accepted, though, I won't be able to actively maintain any Linux additions.
 
 ### Windows Package
-Is available for Youtube Channel Members at the Supporter (Package) level: https://www.youtube.com/channel/UCwNdsF7ZXOlrTKhSoGJPnlQ/join
+Will be available for Youtube Channel Members at the Supporter (Package) level: https://www.youtube.com/channel/UCwNdsF7ZXOlrTKhSoGJPnlQ/join
 
 1. After downloading the zip file, unzip it.
 2. Launch the webui with launch_webui.bat
@@ -83,3 +83,38 @@ Is available for Youtube Channel Members at the Supporter (Package) level: https
     call venv\Scripts\activate
     python webui.py
     ```
+
+## Usage
+There are 3 tabs: Create Dataset, Train, and Settings.
+
+### Create Dataset
+This tab is where you create your dataset.  Follow the steps below to get a feel for doing this.
+
+1. Obtain audio data to train on the speaker
+    - This can be a podcast, audiobook, youtube video, etc.  Basically, anything that has audio (even songs, but not recommended)
+    - One large audio file is recommended, but several smaller files can be used too.
+2. Navigate into the WebUI ```datasets``` folder in the file explorer.  Create a new folder in here and name it whatever you want the final model to be named.  Open this now empty folder.
+3. Decide how many speakers you want inside of this beatrice model (as beatrice can be multispeaker) and then create a new folder for each speaker you want.  Then, place audio files of each speaker into their respective folders.
+    - For example, let's say from step 2, you want the model to be called ```elden_ring``` and you have audio files for two speakers, ```melina``` and ```ranni```
+    - The folder structure would look like this:
+    ```
+    elden_ring\ranni\<many audio files of ranni>
+    elden_ring\melina\<many audio files of ranni>
+    ```
+4. Now launch the training webui.  In the ```Dataset to Process``` dropdown, select the freshly created dataset from steps 1-3 (if you don't see it, click ```Refresh Datasets Available```)
+    - If you run into any errors here, you may have setup the folder structure incorrectly
+5. Click ```Begin Process``` and it will start curating a dataset.  The output will be placed in your ```training``` folder
+    - Manual install users will incur an additional download for the whisper model that is used to split the datasaet.
+6. After some time, you should see something like ```Dataset creation completed successfully``` in the ```Progress Console``` window.
+7. Congrats, your first dataset has been completed!
+
+I haven't run into any issues at this step, so if you do, please open an issue in the github tab
+
+### Train
+The Create Dataset step should be completed before this proceeding here.  If you don't see anything in the dropdown menu, click ```Refresh Training Datasets Available``` and then choose the dataset to train on.
+
+You could just click ```Start Training``` and use the defaults, but I would adjust some of the settings based on what the webui says.
+
+### Settings
+**Dark Mode** - Toggle on/off Dark Mode
+**Toggle Custom Theme** - Toggle on/off custom theme
