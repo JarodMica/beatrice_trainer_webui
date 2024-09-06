@@ -5,5 +5,6 @@ tqdm==4.66.5
 tensorboard==2.17.1
 soundfile==0.12.1
 pyworld==0.3.2
+fastapi==0.112.1
 
 git+https://github.com/m-bain/whisperx.git@9e3a9e0e38fcec1304e1784381059a0e2c670be5
