@@ -9,12 +9,15 @@ import tqdm
 import json
 from pathlib import Path
 from datetime import datetime
+import subprocess
+import time
+import math
 
 from multiprocessing import Pool, cpu_count
 import pysrt
 from pydub import AudioSegment
 
-from gradio_utils.utils import get_available_items, refresh_dropdown_proxy, move_existing_folder
+from gradio_utils.utils import get_available_items, refresh_dropdown_proxy, move_existing_folder, get_port_available, launch_tensorboard_proxy
 
 def get_port_available(start_port=7860, end_port=7865):
     def is_port_in_use(port):
@@ -63,6 +66,7 @@ def load_whisperx(model_name=None, progress=None):
     return whisper_model
 
 def run_whisperx_transcribe(audio_file_path, chunk_size=15, language=None):
+    
     audio = whisperx.load_audio(audio_file_path)
     result = whisper_model.transcribe(audio=audio, batch_size=16, chunk_size=chunk_size)
 
@@ -130,6 +134,7 @@ def split_by_srt(folder_path, progress_bar=None):
         list(tqdm.tqdm(pool.imap_unordered(process_speaker_folder, file_pairs), total=len(file_pairs), desc="Processing Files", file=sys.stdout))
 
 def process_proxy(folder_to_process_path, progress = gr.Progress(track_tqdm=True)):
+    global whisper_model
     training_root = "training"
     training_destination = os.path.join(training_root, os.path.basename(folder_to_process_path))
     
@@ -138,8 +143,7 @@ def process_proxy(folder_to_process_path, progress = gr.Progress(track_tqdm=True
     except FileExistsError:
         raise gr.Error("Remove existing training folder")
 
-    load_whisperx('large-v3')
-    
+    whisper_model = load_whisperx('large-v3')
     
     if not is_correct_dataset_structure(folder_to_process_path):
         raise gr.Error("Invalid folder structure. Ensure the folder contains ONLY subfolders.")
@@ -167,17 +171,9 @@ def process_proxy(folder_to_process_path, progress = gr.Progress(track_tqdm=True
         folder_path = os.path.join(training_destination, folder)
         split_by_srt(folder_path, progress_bar=progress)
         
-    return "Transcription and processing completed successfully!"
+    return "Dataset creation completed successfully!"
 
-def training_proxy(data_dir, batch_size, epochs, num_workers, resume, save_interval, log_interval, progress=gr.Progress(track_tqdm=True)):
-    # pathlib used here cuz of beatrice trainer
-    from beatrice_trainer.src.train import run_training
-    output_name = os.path.basename(data_dir)
-    output_dir = os.path.join("trained_models", output_name)
-    models_output_dir = Path(os.path.join("trained_models", output_name, "models"))
-    data_dir, output_dir = Path(data_dir), Path(output_dir)
-    
-    def count_items_in_directory(root):
+def count_items_in_directory(root):
         file_count = 0
         
         # Use rglob to iterate through all files recursively
@@ -187,14 +183,57 @@ def training_proxy(data_dir, batch_size, epochs, num_workers, resume, save_inter
         
         return file_count
     
+def find_largest_folder(directory):
+    max_file_count = 0
+    largest_folder = None
+    
+    # Iterate through each folder in the given directory
+    for root, dirs, files in os.walk(directory):
+        # If there are files in the current folder, compare file counts
+        if files:
+            file_count = len(files)
+            if file_count > max_file_count:
+                max_file_count = file_count
+                largest_folder = root
+    
+    # print(f"Largest folder: {largest_folder} with {max_file_count} files.")
+    return max_file_count
+    
+def training_calculations(total_audio_files, batch_size, epochs):
+    batches_per_epoch = total_audio_files // batch_size
+    n_steps = epochs * batches_per_epoch
+    return [batches_per_epoch, n_steps]
+
+def recommendation_proxy(data_dir, epochs):
+    # Based on one of my models, 2k audio files in a training folder, at about 50 epoches it sounds decent
+    # Exposed to this speaker a total of 140k times thoughout training
+    recommended_exposure = 100000
+    largest_file_count = find_largest_folder(data_dir)
+    user_value = largest_file_count * epochs
+    recommended_epochs = math.ceil(recommended_exposure / largest_file_count)
+    if user_value < recommended_exposure:
+        return (f"Your largest dataset folder contains {largest_file_count} files, so at {epochs} epochs, "
+            f"the model will be exposed to this speaker {user_value} times.\n"
+            f"Recommended exposure is {recommended_exposure} times, so I'd suggest {recommended_epochs} epochs.\n\n"
+            f"You may find it not necessary to train longer but that is up to you to decide.")
+    else:
+        return f"The amount of training is sufficient.  If the model is lacking after, I recommend adding more audio files."
+
+def training_proxy(data_dir, batch_size, epochs, num_workers, resume, save_interval, log_interval, progress=gr.Progress(track_tqdm=True)):
+    # pathlib used here cuz of beatrice trainer
+    from beatrice_trainer.src.train import run_training
+    output_name = os.path.basename(data_dir)
+    output_dir = os.path.join("trained_models", output_name)
+    models_output_dir = Path(os.path.join("trained_models", output_name, "models"))
+    data_dir, output_dir = Path(data_dir), Path(output_dir)
+    
     total_audio_files = count_items_in_directory(data_dir)
     
+    training_values = training_calculations(total_audio_files, batch_size, epochs)
     # calculate batches per epoch
-    batches_per_epoch = total_audio_files // batch_size
-    
+    batches_per_epoch = training_values[0]
     # calculate total steps needed
-    n_steps = epochs * batches_per_epoch
-    
+    n_steps = training_values[1]
     # warmup steps
     # just going with half based on the initial config set by the okada
     warmup_steps = n_steps // 2
@@ -220,8 +259,6 @@ def training_proxy(data_dir, batch_size, epochs, num_workers, resume, save_inter
     
     # data_dir, out_dir, resume=False, config=None
     run_training(data_dir, models_output_dir, batches_per_epoch, save_interval, log_interval , resume, updated_config_path)
-    
-    
 
 if __name__ == "__main__":
     # Keep the hefty imports away from multiprocessing 
@@ -264,6 +301,7 @@ if __name__ == "__main__":
             primary_hue="zinc",
             secondary_hue="slate",
             neutral_hue="orange",
+            text_size="lg"
         ).set(
             body_background_fill_dark='*primary_900',
             body_text_color='*primary_950',
@@ -283,6 +321,7 @@ if __name__ == "__main__":
             button_small_text_weight='500',
             button_primary_border_color='*primary_500',
             button_primary_border_color_dark='*primary_950'
+            
         )
     else:
         theme = gr.themes.Default()
@@ -321,6 +360,9 @@ if __name__ == "__main__":
             container.style.top = '20px'; // Adjust this value as needed to position the header vertically
             container.style.transition = 'left 1s ease-out'; // Animate the position
             container.style.zIndex = '1000'; // Ensure it stays on top of other elements
+            container.style.whiteSpace = 'nowrap'; // Prevent text wrapping
+            container.style.overflow = 'hidden'; // Ensure overflow is handled properly
+            container.style.textOverflow = 'ellipsis'; // Show ellipsis if text overflows
 
             var text = 'Beatrice Voice Changer Training Webui';
             container.innerText = text;
@@ -386,15 +428,61 @@ if __name__ == "__main__":
                     TRAINING_SETTINGS["log_interval"] = gr.Slider(label="Console Log Interval", minimum=10, maximum=1000, step=10)
                     TRAINING_SETTINGS["resume"] = gr.Checkbox(label="Resume Training", value=False)
                     # TRAINING_SETTINGS["warmup_steps"] =
-                    
-                    
-                    start_train_button = gr.Button(value="Start Training", variant="primary")
-                    
+
+                    html_value = '''<h2>What are Batches</h2>
+                                    <p>Bunches or groups of files that are processed at once by the model. A batch size of 1 trains on a single audio file at a time, a batch size of 8 trains on 8 audio files at a time.</p>
+
+                                    <h3>Batch Size:</h3>
+                                    <p>The number of audio files processed per step. The higher the value, the faster training is but also incurs more VRAM usage.</p>
+
+                                    <h2>What are Epochs</h2>
+                                    <p>A complete pass through the entire dataset where the model has "been trained on" all of the audio samples a single time.</p>
+
+                                    <h3>Number of Epochs:</h3>
+                                    <p>The amount of epochs you want to train the model for. The higher the value, the better the model may sound but it will take longer to finish.</p>
+
+                                    <h2>What are Workers</h2>
+                                    <p>Processes or "sorters" that go through the dataset to curate and create the batches needed for training.</p>
+
+                                    <h3>Number of Workers:</h3>
+                                    <p>The amount of workers created to sort the data. The higher the value, the faster data gets prepared, but may cause unnecessary overhead if your GPU isn't fast enough. Recommend to leave at default value.</p>
+
+                                    <h3>Save Interval in Epochs:</h3>
+                                    <p>How often a model is saved. For larger datasets, I'd save at lower intervals as you will need fewer epochs to complete training. For smaller datasets, I'd save at larger intervals to reduce how much space training will take up to complete.</p>
+
+                                    <h3>Console Log Interval:</h3>
+                                    <p>How often training loss is output to the terminal and for tensorboard. Recommend 10-100.</p>
+                                    '''
+                with gr.Column():   
+                    recommendation_console = gr.Textbox(label="Jarods's Recommendation")
+            with gr.Row():
+                output_console = gr.Textbox(label="Training Console")
+            with gr.Row():
                 with gr.Column():
-                    output_console = gr.Textbox(label="Training Console")
+                    start_train_button = gr.Button(value="Start Training", variant="primary")
+                with gr.Column():
+                    launch_tb_button = gr.Button(value="Launch Tensorboard")
+            with gr.Row():
+                gr.HTML(value=html_value)
         with gr.Tab("Settings"):
             dark_mode_btn = gr.Button("Dark Mode", variant="primary")
             toggle_theme_btn = gr.Button("Toggle Custom Theme", variant="primary")
+            
+        for key, component in TRAINING_SETTINGS.items():
+                if isinstance(component, gr.Dropdown):
+                    component.change(
+                        fn=recommendation_proxy, 
+                        inputs=[TRAINING_SETTINGS["dataset_name"], 
+                                TRAINING_SETTINGS["epochs"]],
+                        outputs=recommendation_console
+                        )
+                elif isinstance(component, gr.Slider):
+                    component.release(
+                        fn=recommendation_proxy, 
+                        inputs=[TRAINING_SETTINGS["dataset_name"], 
+                                TRAINING_SETTINGS["epochs"]],
+                        outputs=recommendation_console
+                        )
 
         start_train_button.click(fn=training_proxy,
                                  inputs=[
@@ -408,6 +496,8 @@ if __name__ == "__main__":
                                          ],
                                  outputs=output_console
                                  )
+        
+        launch_tb_button.click(fn=launch_tensorboard_proxy)
         
         hidden_option1 = gr.Textbox(value="directory", visible=False)
         hidden_option2 = gr.Textbox(value="files", visible=False)
