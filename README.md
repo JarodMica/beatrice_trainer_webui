@@ -117,4 +117,5 @@ You could just click ```Start Training``` and use the defaults, but I would adju
 
 ### Settings
 **Dark Mode** - Toggle on/off Dark Mode
+
 **Toggle Custom Theme** - Toggle on/off custom theme
