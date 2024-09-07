@@ -32,6 +32,7 @@ cd ..
 
 xcopy %REPO_NAME%\update_package.bat update_package.bat /E /I /H 
 xcopy %REPO_NAME%\launch_tensorboard.bat launch_tensorboard.bat /E /I /H 
+xcopy %REPO_NAME%\requirements.txt requirements.txt /E /I /H 
 
 xcopy %REPO_NAME%\webui.py webui.py /H
 xcopy %REPO_NAME%\modules\beatrice_trainer modules\beatrice_trainer /E /I /H
@@ -42,6 +43,7 @@ runtime\python.exe -m pip install modules\beatrice_trainer
 
 runtime\python.exe -m pip uninstall gradio_utils
 runtime\python.exe -m pip install modules\gradio_utils
+runtime\python.exe -m pip install -r requirements.txt
 
 @echo ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 @echo ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
