@@ -1,8 +1,8 @@
 venv/
 .vscode/
 __pycache__/
-*.wav
 whisper_models/
 
 *.pt
 test.py
+/*.wav

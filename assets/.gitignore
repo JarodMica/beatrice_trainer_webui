@@ -1,3 +1,7 @@
-*
-!test_english
-!.gitignore
+test/
+pretrained/
+noise/
+ir/
+images/
+*.json
+*.md

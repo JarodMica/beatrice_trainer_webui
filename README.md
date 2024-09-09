@@ -1,7 +1,7 @@
 # Beatrice V2 Training Webui
 This webui is designed to train models for Beatrice v2 which is compatible with w-okada's realtime voice changing client v2: https://github.com/w-okada/voice-changer
 
-The code to train beatrice models it adapted from: https://huggingface.co/fierce-cats/beatrice-trainer
+The code to train beatrice models is adapted from: https://huggingface.co/fierce-cats/beatrice-trainer
 
 The latest version of w-okada is 2.0.61-alpha as of writing this readme
 
@@ -119,3 +119,11 @@ You could just click ```Start Training``` and use the defaults, but I would adju
 **Dark Mode** - Toggle on/off Dark Mode
 
 **Toggle Custom Theme** - Toggle on/off custom theme
+
+## Acknowledgements
+This would not be possible without w-okada and his contributors.  Huge thanks to them for creating this powerful open-source tool: https://github.com/w-okada/voice-changer
+
+## License
+Everything I've coded it MIT.  Check w-okada for any licenses involving his tools (the voice changer client and beatrice)
+
+Audio files used here are directly from Libritts-r: https://www.openslr.org/141/ which retains a license of CC BY 4.0.
