@@ -207,7 +207,8 @@ def training_calculations(total_audio_files, batch_size, epochs):
 def recommendation_proxy(data_dir, epochs):
     # Based on one of my models, 2k audio files in a training folder, at about 50 epoches it sounds decent
     # Exposed to this speaker a total of 140k times thoughout training
-    recommended_exposure = 100000
+    # 2k at 5 epochs also sounded fine, going to recommend the lowest
+    recommended_exposure = 10000
     largest_file_count = find_largest_folder(data_dir)
     user_value = largest_file_count * epochs
     recommended_epochs = math.ceil(recommended_exposure / largest_file_count)
@@ -217,7 +218,7 @@ def recommendation_proxy(data_dir, epochs):
             f"Recommended exposure is {recommended_exposure} times, so I'd suggest {recommended_epochs} epochs.\n\n"
             f"You may find it not necessary to train longer but that is up to you to decide.")
     else:
-        return f"The amount of training is sufficient.  If the model is lacking after, I recommend adding more audio files."
+        return f"The amount of training is sufficient.  If the model is lacking after, I recommend either adding more audio files, or training for longer."
 
 def training_proxy(data_dir, batch_size, epochs, num_workers, resume, save_interval, log_interval, progress=gr.Progress(track_tqdm=True)):
     # pathlib used here cuz of beatrice trainer
@@ -237,6 +238,10 @@ def training_proxy(data_dir, batch_size, epochs, num_workers, resume, save_inter
     # warmup steps
     # just going with half based on the initial config set by the okada
     warmup_steps = n_steps // 2
+    
+    # Max number of warmup_steps hardset at 10k
+    if warmup_steps > 10000:
+        warmup_steps = 10000
     
     def update_configurations(config, batch_size, n_steps, num_workers, warmup_steps):
         config['batch_size'] = batch_size
@@ -258,8 +263,11 @@ def training_proxy(data_dir, batch_size, epochs, num_workers, resume, save_inter
 
     
     # data_dir, out_dir, resume=False, config=None
-    run_training(data_dir, models_output_dir, batches_per_epoch, save_interval, log_interval , resume, updated_config_path)
-
+    try:
+        run_training(data_dir, models_output_dir, batches_per_epoch, save_interval, log_interval , resume, updated_config_path)
+    except Exception as e:
+        raise gr.Error(e)
+    
 if __name__ == "__main__":
     # Keep the hefty imports away from multiprocessing 
     import whisperx
@@ -430,7 +438,7 @@ if __name__ == "__main__":
                     # TRAINING_SETTINGS["warmup_steps"] =
 
                     html_value = '''<h2>What are Batches</h2>
-                                    <p>Bunches or groups of files that are processed at once by the model. A batch size of 1 trains on a single audio file at a time, a batch size of 8 trains on 8 audio files at a time.</p>
+                                    <p>Bunches or groups of files that are processed at once by the model before updating gradients (model predictions --> loss calc --> gradient update). A batch size of 1 trains on a single audio file at a time, a batch size of 8 trains on 8 audio files at a time.</p>
 
                                     <h3>Batch Size:</h3>
                                     <p>The number of audio files processed per step. The higher the value, the faster training is but also incurs more VRAM usage.</p>
