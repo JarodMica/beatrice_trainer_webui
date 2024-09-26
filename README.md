@@ -23,6 +23,9 @@ Will be available for Youtube Channel Members at the Supporter (Package) level: 
 - Python 3.11 - https://www.python.org/downloads/release/python-3119/
 - git - https://git-scm.com/downloads
 
+0. Install FFMPEG, overall, just a good tool to have and is needed for the repo.
+    - https://www.youtube.com/watch?v=JR36oH35Fgg&ab_channel=Koolac
+
 1. Clone the repository
     ```
     git clone https://github.com/JarodMica/beatrice_trainer_webui.git
