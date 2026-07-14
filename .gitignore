@@ -1,6 +1,10 @@
-venv/
+.venv/
 .vscode/
 __pycache__/
+dist/
+local/
+runtime/
+torch_home/
 whisper_models/
 
 *.pt

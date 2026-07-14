@@ -1,11 +1,10 @@
-pysrt==1.1.2
-pydub==0.25.1
-gradio==4.42.0
-tqdm==4.66.5
-tensorboard==2.17.1
-soundfile==0.12.1
-pyworld==0.3.2
+# Compatibility fallback only. The supported reproducible installation is:
+#   uv sync --locked --extra cu128
+-e ./modules/beatrice_trainer[cu128]
+-e ./modules/gradio_utils
 fastapi==0.112.1
+gradio==4.42.0
+pydub==0.25.1
+pysrt==1.1.2
 starlette==0.38.2
-
-whisperx
+whisperx>=3.3,<4
